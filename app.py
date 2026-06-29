@@ -71,9 +71,8 @@ st.markdown(
             unsafe_allow_html=True
         )
 st.markdown('''<p style= "text-align : center; font-size: 22px; font-family : Aparajita;margin-left: 5%; margin-right : 5%;padding-bottom:20px;">
-            Plan smarter journeys with AI — generate personalized, 
-            budget-friendly student itineraries powered by 
-            real-time location data and interactive maps.
+            Experience intelligent travel planning with AI—generate personalized itineraries, optimize your budget, and explore destinations through real-time insights and interactive maps.
+            <b>Demo Version:</b> Experience 3 Plan Generations per Session.
             ''',unsafe_allow_html=True)
 
 if "itinerary" not in st.session_state:

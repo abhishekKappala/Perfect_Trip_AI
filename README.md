@@ -1,6 +1,6 @@
-# 🌍 Perfect_Trip_AI – Smart Student Travel Planner
+# 🌍 Perfect_Trip_AI – Smart Travel Planner
 
-**Perfect_Trip_AI** is an intelligent travel planning platform tailored for students who want efficient, low-cost, and personalized trips.  
+**Perfect_Trip_AI** is an intelligent travel planning platform tailored for travellers who want efficient, low-cost, and personalized trips.  
 It leverages modern AI models, live geographic data, and clean visualizations to build structured travel itineraries in seconds.
 
 
@@ -148,6 +148,8 @@ Streamlit Cloud will automatically rebuild the app whenever new commits are push
 ---
 
 ##  Demo Usage Limitation
+
+https://perfect-trip-ai.streamlit.app
 
 The deployed demo version limits itinerary generation to **3 uses per session** to manage API usage and prevent misuse.
 

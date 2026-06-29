@@ -18,7 +18,7 @@ def generate_itinerary(travel_details):
 
     prompt = f"""
     Create a {travel_details["duration"]} day itinerary for a group of {travel_details["people"]} people.
-    Plan as a professional travel planner specializing in budget-friendly student trips. Plan according to the time of the day - morning, afternoon, and evening.
+    Plan as a professional travel planner specializing in budget-friendly trips. Plan according to the time of the day - morning, afternoon, and evening.
     For each time (morning, afternoon or evening) add the estimated cost for the activity.  
     Moreover add a few tips at the end to make the trip more enjoyable. 
 

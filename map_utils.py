@@ -44,7 +44,7 @@ def geocode_location(place):
         "format" : "json",
         "limit" : 1
     } 
-    response = requests.get(url, params=parameters, headers= {"User-Agent" : "Yatra-Saarthi Student Travel Planner App (educational project)"})
+    response = requests.get(url, params=parameters, headers= {"User-Agent" : "Perfect Trip AI"})
 
     if response.status_code== 200 and response.json():
         data = response.json()[0]
