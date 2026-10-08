@@ -2,6 +2,61 @@ from groq import Groq
 import streamlit as st
 import json
 
+
+def _num(x):
+    try:
+        return int(float(str(x).replace(",", "").replace("INR", "").strip()))
+    except (ValueError, TypeError):
+        return 0
+
+def normalize_itinerary(data, destination=""):
+    """Force the model's JSON into the shape app.py / pdf_generator.py expect."""
+    days = data.get("days") or data.get("itinerary") or []
+    if isinstance(days, dict):
+        days = list(days.values())
+
+    clean_days = []
+    for i, day in enumerate(days, start=1):
+        if not isinstance(day, dict):
+            continue
+        acts = day.get("activities", [])
+        if isinstance(acts, dict):
+            acts = [{"time": k, **v} if isinstance(v, dict) else {"time": k, "activity": str(v)}
+                    for k, v in acts.items()]
+        clean_acts = []
+        for a in acts:
+            if isinstance(a, str):
+                a = {"activity": a}
+            if not isinstance(a, dict):
+                continue
+            clean_acts.append({
+                "time": a.get("time", ""),
+                "activity": a.get("activity", ""),
+                "location": a.get("location", ""),
+                "estimated_cost": _num(a.get("estimated_cost", 0)),
+                "food_recommendation": a.get("food_recommendation", "-"),
+                "transport_suggestion": a.get("transport_suggestion", "-"),
+            })
+        clean_days.append({
+            "day": day.get("day", i),
+            "activities": clean_acts,
+            "daily_estimated_total": _num(day.get("daily_estimated_total",
+                                          sum(a["estimated_cost"] for a in clean_acts))),
+        })
+    data["days"] = clean_days
+
+    b = data.get("budget_breakdown") or {}
+    data["budget_breakdown"] = {k: _num(b.get(k, 0)) for k in
+        ["accommodation_total", "food_total", "transport_total", "activities_total", "miscellaneous"]}
+
+    tips = data.get("travel_tips", [])
+    data["travel_tips"] = [tips] if isinstance(tips, str) else list(tips)
+
+    summary = data.get("trip_summary") or {}
+    summary.setdefault("destination", destination)
+    data["trip_summary"] = summary
+    return data
+
 def generate_itinerary(travel_details):
     try:
         api_key = st.secrets["GROQ_API_KEY"]
@@ -91,7 +146,7 @@ def generate_itinerary(travel_details):
         )
 
         content = response.choices[0].message.content
-        return json.loads(content)
+        return normalize_itinerary(json.loads(content), travel_details["destination"])
     
     except json.JSONDecodeError:
         st.error("AI JSON Decoding Failed !. Please try again")
