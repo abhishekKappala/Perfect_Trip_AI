@@ -57,6 +57,28 @@ def normalize_itinerary(data, destination=""):
     data["trip_summary"] = summary
     return data
 
+def _obj(props):
+    """Strict-mode JSON schema object: every field required, no extra fields."""
+    return {"type": "object", "properties": props,
+            "required": list(props), "additionalProperties": False}
+
+_S, _N = {"type": "string"}, {"type": "number"}
+
+ITINERARY_SCHEMA = _obj({
+    "trip_summary": _obj({"destination": _S, "duration_days": _N, "total_budget": _N,
+                          "budget_per_day": _N, "budget_per_person": _N}),
+    "days": {"type": "array", "items": _obj({
+        "day": {"type": "integer"},
+        "activities": {"type": "array", "items": _obj({
+            "time": _S, "activity": _S, "location": _S, "estimated_cost": _N,
+            "food_recommendation": _S, "transport_suggestion": _S})},
+        "daily_estimated_total": _N})},
+    "budget_breakdown": _obj({"accommodation_total": _N, "food_total": _N,
+                              "transport_total": _N, "activities_total": _N, "miscellaneous": _N}),
+    "travel_tips": {"type": "array", "items": _S},
+})
+
+
 def generate_itinerary(travel_details):
     try:
         api_key = st.secrets["GROQ_API_KEY"]
@@ -135,19 +157,29 @@ def generate_itinerary(travel_details):
     MODEL = st.secrets.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "You are a travel planning assistant. Reply only with JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.6,
-            response_format={"type": "json_object"},
-        )
+        response = None
+        for attempt in range(2):  # retry once if Groq rejects the output
+            try:
+                response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a travel planning assistant. Reply only with JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.6,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"name": "itinerary", "strict": True, "schema": ITINERARY_SCHEMA},
+                    },
+                )
+                break
+            except Exception:
+                if attempt == 1:
+                    raise
 
         content = response.choices[0].message.content
         return normalize_itinerary(json.loads(content), travel_details["destination"])
-    
+
     except json.JSONDecodeError:
         st.error("AI JSON Decoding Failed !. Please try again")
         return None
