@@ -52,6 +52,14 @@ def normalize_itinerary(data, destination=""):
     tips = data.get("travel_tips", [])
     data["travel_tips"] = [tips] if isinstance(tips, str) else list(tips)
 
+    stay = data.get("recommended_stay") or {}
+    data["recommended_stay"] = {
+        "name": stay.get("name", ""),
+        "area": stay.get("area", ""),
+        "reason": stay.get("reason", ""),
+        "cost_per_night": _num(stay.get("cost_per_night", 0)),
+    }
+
     summary = data.get("trip_summary") or {}
     summary.setdefault("destination", destination)
     data["trip_summary"] = summary
@@ -75,6 +83,7 @@ ITINERARY_SCHEMA = _obj({
         "daily_estimated_total": _N})},
     "budget_breakdown": _obj({"accommodation_total": _N, "food_total": _N,
                               "transport_total": _N, "activities_total": _N, "miscellaneous": _N}),
+    "recommended_stay": _obj({"name": _S, "area": _S, "reason": _S, "cost_per_night": _N}),
     "travel_tips": {"type": "array", "items": _S},
 })
 
@@ -93,6 +102,9 @@ def generate_itinerary(travel_details):
 
     client = Groq(api_key=api_key)
 
+    attraction_names = ", ".join(a["name"] for a in travel_details.get("nearby_attractions", [])[:20]) or "none found"
+    hotel_names = ", ".join(h["name"] for h in travel_details.get("nearby_hotels", [])[:10]) or "none found"
+
     prompt = f"""
     Create a {travel_details["duration"]} day itinerary for a group of {travel_details["people"]} people.
     Plan as a professional travel planner specializing in budget-friendly trips. Plan according to the time of the day - morning, afternoon, and evening.
@@ -105,6 +117,14 @@ def generate_itinerary(travel_details):
     Budget per person: INR {travel_details["budget_per_person"]}
     Interested activities: {travel_details["interests"]}
     Accommodation: {travel_details["accomodation"]}
+
+    Real places near the destination (from OpenStreetMap). Use these in the plan where they fit:
+    Attractions: {attraction_names}
+    Places to stay: {hotel_names}
+
+    - For "recommended_stay", pick ONE place from "Places to stay" that fits the accommodation type and budget.
+      If that list is empty, suggest a well-known area to stay in instead.
+    - All costs are in INR for the WHOLE group of {travel_details["people"]} people, not per person.
 
     IMPORTANT:
     - Return ONLY valid JSON
@@ -146,6 +166,12 @@ def generate_itinerary(travel_details):
         "transport_total": number,
         "activities_total": number,
         "miscellaneous": number
+    }},
+    "recommended_stay": {{
+        "name": "string",
+        "area": "string",
+        "reason": "string",
+        "cost_per_night": number
     }},
     "travel_tips": [
         "Tip 1",
