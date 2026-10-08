@@ -77,14 +77,17 @@ def generate_itinerary(travel_details):
     }}
     """
 
-    try :
+    MODEL = st.secrets.get("GROQ_MODEL", "openai/gpt-oss-120b")
+
+    try:
         response = client.chat.completions.create(
-            model = "llama-3.3-70b-versatile",
+            model=MODEL,
             messages=[
-                {"role" : "system", "content" : "You are a travel planning assistant."},
-                {"role" : "user", "content" : prompt}
+                {"role": "system", "content": "You are a travel planning assistant. Reply only with JSON."},
+                {"role": "user", "content": prompt}
             ],
-            temperature=0.6
+            temperature=0.6,
+            response_format={"type": "json_object"},
         )
 
         content = response.choices[0].message.content
