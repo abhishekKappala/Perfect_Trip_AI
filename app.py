@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import pydeck as pdk
 from ai_module import generate_itinerary
-from map_utils import geocode_location, fetch_nearby_attractions
+from map_utils import geocode_location, fetch_nearby_attractions, fetch_hotels
 from pdf_generator import generate_pdf
 
 #Validate user input
@@ -81,6 +81,9 @@ if "itinerary" not in st.session_state:
 if "travel_details" not in st.session_state:
     st.session_state.travel_details = None
 
+if "map_data" not in st.session_state:
+    st.session_state.map_data = None
+
 left, center, right = st.columns([1,2,1])
 
 with center : 
@@ -109,6 +112,56 @@ with center :
         
         submitted = st.form_submit_button("Generate Travel Plan",use_container_width=True)
 
+def render_map(m):
+    st.divider()
+    st.markdown('''<h2 style = "text-align : center;">Nearby Places & Stays</h2>''', unsafe_allow_html=True)
+
+    attractions, hotels = m["attractions"], m["hotels"]
+    if not attractions and not hotels:
+        st.info("The map data service is busy right now, so only your destination is shown. Try again in a minute.")
+    else:
+        st.caption(f"Found {len(attractions)} attractions within {m['attraction_radius']/1000:g} km "
+                   f"and {len(hotels)} stays within {m['hotel_radius']/1000:g} km")
+
+    rows = [{"name": m["destination"], "lat": m["lat"], "lon": m["lon"], "kind": "Destination",
+             "color": [0, 200, 120, 230], "size": 9}]
+    rows += [{"name": a["name"], "lat": a["lat"], "lon": a["lon"], "kind": a["category"].title(),
+              "color": [255, 70, 70, 200], "size": 6} for a in attractions]
+    rows += [{"name": h["name"], "lat": h["lat"], "lon": h["lon"],
+              "kind": f"Stay ({h['category']})" + (f" - {h['stars']} star" if h["stars"] else ""),
+              "color": [60, 140, 255, 220], "size": 7} for h in hotels]
+    points = pd.DataFrame(rows)
+
+    left, right = st.columns([2, 1])
+    with left:
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=points,
+            get_position="[lon, lat]",
+            get_fill_color="color",
+            get_radius="size * 12",
+            radius_min_pixels=5,
+            pickable=True,
+        )
+        view_state = pdk.ViewState(latitude=m["lat"], longitude=m["lon"], zoom=12)
+        tooltip = {"html": "<b>{name}</b><br/>{kind}", "style": {"color": "white"}}
+        st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip))
+        st.caption("🟢 Destination   🔴 Attractions   🔵 Places to stay")
+
+    with right:
+        st.subheader(f"🏨 Places to stay ({m['accomodation']})")
+        if hotels:
+            for h in hotels[:8]:
+                st.write("->  ", h["name"] + (f" ({h['stars']}★)" if h["stars"] else ""))
+        else:
+            st.write("No listed stays found nearby.")
+
+        st.subheader("📍 Nearby attractions")
+        for a in attractions[:10]:
+            st.write("->  ", a["name"])
+
+
+
 if submitted:
     #validate input before proceeding further
     vaildate_input(destination, interests)
@@ -126,11 +179,11 @@ if submitted:
     if (lat is None):
         st.error("Cannot find the location! Please enter a valid location. ")
         st.stop()
-    with st.spinner("Finding Nearby Locations") :
-        attractions, used_radius = fetch_nearby_attractions(lat, lon,interests)
-    st.success(f"Found {len(attractions)} locations within {used_radius/1000} km")
+    with st.spinner("Finding nearby places and stays ..."):
+        attractions, used_radius = fetch_nearby_attractions(lat, lon, interests)
+        hotels, hotel_radius = fetch_hotels(lat, lon, accomodation)
 
-    #adding attractions to travel details
+    #adding attractions and hotels to travel details
     travel_details = {
         "destination" : destination,
         "duration" : duration,
@@ -138,59 +191,25 @@ if submitted:
         "people" : people,
         "interests" : interests,
         "accomodation" : accomodation,
-        
-        #Add additional details to make output better 
+
+        #Add additional details to make output better
         "budget_per_day" : int(budget/duration),
         "budget_per_person" : int(budget/people),
-        "nearby_attractions" : attractions
+        "nearby_attractions" : attractions,
+        "nearby_hotels" : hotels
     }
 
     st.session_state.travel_details = travel_details
 
-    st.divider()
-    st.markdown(
-            '''<h2 style = "text-align : center;">Nearby Locations</h2>''',
-            unsafe_allow_html=True
-        )
-    st.markdown("\n")
-    left, right = st.columns([2, 1])
-    with left:
-        locations = pd.DataFrame(attractions)
-        if not locations.empty:
-
-            layer = pdk.Layer(
-                "ScatterplotLayer",
-                data=locations,
-                get_position='[lon, lat]',
-                get_color='[255, 0, 0, 160]',
-                get_radius=120,
-                pickable=True,
-            )
-
-            view_state = pdk.ViewState(
-                latitude=locations["lat"].mean(),
-                longitude=locations["lon"].mean(),
-                zoom=12,
-            )
-
-            tooltip = {
-                "html": "<b>{name}</b>",
-                "style": {"color": "white"}
-            }
-
-            deck = pdk.Deck(
-                layers=[layer],
-                initial_view_state=view_state,
-                tooltip=tooltip
-            )
-
-            st.pydeck_chart(deck)
-
-    with right:
-        st.markdown("\n")
-        st.subheader("List of nearby attractions")
-        for place in attractions[:10]:
-            st.write("->   ",place["name"])
+    # saved in session_state so the map stays visible after reruns (e.g. PDF download click)
+    st.session_state.map_data = {
+        "destination": destination, "lat": lat, "lon": lon,
+        "attractions": attractions, "attraction_radius": used_radius,
+        "hotels": hotels, "hotel_radius": hotel_radius,
+        "accomodation": accomodation,
+    }
+    st.session_state.itinerary = None      # clear the old plan
+    render_map(st.session_state.map_data)
 
     # Displaying itinerary
     with st.spinner("Generating your travel plan ..."):
@@ -199,6 +218,12 @@ if submitted:
             st.session_state.itinerary = itinerary
             st.session_state.usage_count += 1
 
+
+
+# on reruns (e.g. clicking Download) keep showing the saved map
+if st.session_state.map_data and not submitted:
+    render_map(st.session_state.map_data)
+
 if st.session_state.itinerary : 
     st.markdown(
             '''<h2 style = "text-align : center;">Your Day wise itinerary</h2>''',
@@ -206,7 +231,11 @@ if st.session_state.itinerary :
         )
 
     left, center, right = st.columns([1,3,1])
-    with center : 
+    with center :
+        stay = st.session_state.itinerary.get("recommended_stay") or {}
+        if stay.get("name"):
+            st.success(f"🏨 Recommended stay: **{stay['name']}** ({stay.get('area', '')}) - "
+                       f"about INR {stay.get('cost_per_night', 0)} per night. {stay.get('reason', '')}")
         for day in st.session_state.itinerary["days"]:
             with st.expander(f" Day {day['day']}"):
             #Convert all to markdown html
