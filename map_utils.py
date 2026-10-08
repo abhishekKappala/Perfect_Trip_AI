@@ -37,21 +37,20 @@ INTEREST_TAG = {
         ("building", "shrine")
     ]
 }
+HEADERS = {"User-Agent": "PerfectTripAI/1.0 (github.com/abhishekKappala/Perfect_Trip_AI)"}
+
 def geocode_location(place):
     url = "https://nominatim.openstreetmap.org/search"
-    parameters = {
-        "q" : place,
-        "format" : "json",
-        "limit" : 1
-    } 
-    response = requests.get(url, params=parameters, headers= {"User-Agent" : "Perfect Trip AI"})
+    parameters = {"q": place, "format": "json", "limit": 1}
+    try:
+        response = requests.get(url, params=parameters, headers=HEADERS, timeout=15)
+        if response.status_code == 200 and response.json():
+            data = response.json()[0]
+            return float(data["lat"]), float(data["lon"])
+    except requests.exceptions.RequestException:
+        st.warning("Location service is busy right now. Please try again in a minute.")
+    return None, None
 
-    if response.status_code== 200 and response.json():
-        data = response.json()[0]
-        return float (data["lat"]), float(data["lon"])
-    else :
-        return None, None
-    
 
 def fetch_nearby_attractions(lat, lon, interests, min_results=5):
     
@@ -66,8 +65,6 @@ def fetch_nearby_attractions(lat, lon, interests, min_results=5):
     return attractions, radius  # return whatever we got
 
 def fetch_with_radius(lat, lon, interests, radius):
-    overpass_url = "https://overpass-api.de/api/interpreter"
-
     query_parts = []
 
     # Build dynamic query based on interests
@@ -100,12 +97,23 @@ def fetch_with_radius(lat, lon, interests, radius):
     out center;
     """
 
-    response = requests.post(overpass_url, data=query)
+    servers = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+    ]
+    data = None
+    for server in servers:
+        try:
+            response = requests.post(server, data={"data": query}, headers=HEADERS, timeout=40)
+            if response.status_code == 200:
+                data = response.json()
+                break
+        except (requests.exceptions.RequestException, ValueError):
+            continue  # try the next server
 
-    if response.status_code != 200:
+    if data is None:
         return []
-
-    data = response.json()
     attractions = []
     seen = set()
 
